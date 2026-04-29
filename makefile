@@ -49,8 +49,13 @@ run: $(IMG)
 
 image: $(IMG)
 
-# Create the image with the EFI application and startup script
-$(IMG): $(TARGET)
+KERNEL_ELF := kernel/kernel.elf
+
+kernel/kernel.elf:
+	$(MAKE) -C kernel
+
+# Create the image with the EFI application and kernel binary
+$(IMG): $(TARGET) $(KERNEL_ELF)
 	@echo "Creating image $@..."
 	dd if=/dev/zero of=$@ bs=512 count=93750
 	parted $@ -s -a minimal mklabel gpt
@@ -61,6 +66,7 @@ $(IMG): $(TARGET)
 	mmd -i $(TMP_PART) ::/EFI
 	mmd -i $(TMP_PART) ::/EFI/BOOT
 	mcopy -i $(TMP_PART) $< ::/EFI/BOOT/$(notdir $<)
+	mcopy -i $(TMP_PART) $(KERNEL_ELF) ::kernel.elf
 	dd if=$(TMP_PART) of=$@ bs=512 count=91669 seek=2048 conv=notrunc
 
 $(TARGET): $(OBJS)
@@ -84,3 +90,4 @@ remount: unmount mount
 
 clean: unmount
 	rm -rf *.log *.tmp $(BUILD_DIR)
+	$(MAKE) -C kernel clean
