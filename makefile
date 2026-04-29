@@ -1,25 +1,27 @@
-SRC_DIR := src
-INC_DIR := include
-BUILD_DIR := build
-MNT_LINK := mnt
+SRC_DIR    := src
+KERNEL_DIR := kernel/src
+INC_DIR    := include
+BUILD_DIR  := build
+MNT_LINK   := mnt
 
+# UEFI application
 SOURCES := $(wildcard $(SRC_DIR)/*.c)
 OBJS    := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SOURCES))
 DEPENDS := $(OBJS:.o=.d)
 TARGET  := $(BUILD_DIR)/BOOTX64.EFI
 
-IMG := $(BUILD_DIR)/OS.img
-TMP_PART = /tmp/part.img
-FIRMWARE_BIN = bios64.bin
-QEMU_LOG = qemu.log
+# Kernel
+KERNEL_SRCS    := $(wildcard $(KERNEL_DIR)/*.c)
+KERNEL_OBJS    := $(patsubst $(KERNEL_DIR)/%.c,$(BUILD_DIR)/kernel/%.o,$(KERNEL_SRCS))
+KERNEL_DEPENDS := $(KERNEL_OBJS:.o=.d)
+KERNEL_ELF     := $(BUILD_DIR)/kernel.elf
 
-#CC = x86_64-w64-mingw32-gcc
-#LDFLAGS = \
- 	-nostdlib \
-  	-Wl,--subsystem,10 \
-  	-e UefiEntry
+IMG          := $(BUILD_DIR)/OS.img
+TMP_PART      = /tmp/part.img
+FIRMWARE_BIN  = bios64.bin
+QEMU_LOG      = qemu.log
 
-CC = clang -target x86_64-unknown-windows
+CC      = clang -target x86_64-unknown-windows
 LDFLAGS = \
 	-nostdlib \
 	-target x86_64-unknown-windows \
@@ -35,6 +37,16 @@ CFLAGS = \
 	-ffreestanding \
 	-I$(INC_DIR)
 
+KCC      = clang
+KCFLAGS  = \
+	-ffreestanding -fno-pie -fno-pic -fno-stack-protector \
+	-mno-red-zone -nostdlib -O2 -Wall -Wextra \
+	-MMD \
+	-I$(INC_DIR)
+
+KLD      = ld.lld
+KLDFLAGS = -T kernel/linker.ld --no-dynamic-linker -z noexecstack
+
 .PHONY: run clean image mount unmount remount
 
 run: $(IMG)
@@ -49,12 +61,6 @@ run: $(IMG)
 
 image: $(IMG)
 
-KERNEL_ELF := kernel/kernel.elf
-
-kernel/kernel.elf:
-	$(MAKE) -C kernel
-
-# Create the image with the EFI application and kernel binary
 $(IMG): $(TARGET) $(KERNEL_ELF)
 	@echo "Creating image $@..."
 	dd if=/dev/zero of=$@ bs=512 count=93750
@@ -75,10 +81,20 @@ $(TARGET): $(OBJS)
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(KERNEL_ELF): $(KERNEL_OBJS)
+	$(KLD) $(KLDFLAGS) -o $@ $^
+
+$(BUILD_DIR)/kernel/%.o: $(KERNEL_DIR)/%.c | $(BUILD_DIR)/kernel
+	$(KCC) $(KCFLAGS) -c $< -o $@
+
 $(BUILD_DIR):
 	mkdir -p $@
 
+$(BUILD_DIR)/kernel: | $(BUILD_DIR)
+	mkdir -p $@
+
 -include $(DEPENDS)
+-include $(KERNEL_DEPENDS)
 
 mount: $(IMG)
 	./mount.sh $(IMG) $(MNT_LINK)
@@ -90,4 +106,3 @@ remount: unmount mount
 
 clean: unmount
 	rm -rf *.log *.tmp $(BUILD_DIR)
-	$(MAKE) -C kernel clean
