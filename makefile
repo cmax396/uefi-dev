@@ -81,8 +81,8 @@ $(TARGET): $(OBJS)
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(KERNEL_ELF): $(KERNEL_OBJS)
-	$(KLD) $(KLDFLAGS) -o $@ $^
+$(KERNEL_ELF): $(KERNEL_OBJS) kernel/linker.ld
+	$(KLD) $(KLDFLAGS) -o $@ $(KERNEL_OBJS)
 
 $(BUILD_DIR)/kernel/%.o: $(KERNEL_DIR)/%.c | $(BUILD_DIR)/kernel
 	$(KCC) $(KCFLAGS) -c $< -o $@
